@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Binarios compilados
+/servidor
+/bin/
+*.exe
+*.test
+*.out
+
+# Archivos de editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
