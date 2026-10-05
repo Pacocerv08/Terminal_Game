@@ -24,10 +24,24 @@ func (m *Maquina) Fase() Fase {
 	return m.fase
 }
 
+// PermiteUnirse indica si en la fase actual pueden entrar jugadores nuevos.
+//
+// TODO: provisional. Hoy solo se puede entrar en la sala de espera; las reglas
+// reales de cada fase son el paso 6 del orden de trabajo.
+func (m *Maquina) PermiteUnirse() bool {
+	return m.fase == SalaDeEspera
+}
+
 // AccionPermitida indica si la acción a se puede aplicar en la fase actual.
 // Por ejemplo, no se dispara en la sala de espera.
+//
+// TODO: provisional. Hoy en la sala de espera solo se permite moverse y en
+// las demás fases no se permite nada; las reglas reales son el paso 6.
 func (m *Maquina) AccionPermitida(a juego.Accion) bool {
-	// TODO: decidir según la fase y el tipo de acción.
+	if m.fase == SalaDeEspera {
+		_, esMover := a.(juego.MoverAccion)
+		return esMover
+	}
 	return false
 }
 
