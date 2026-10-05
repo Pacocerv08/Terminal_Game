@@ -1,5 +1,7 @@
 package juego
 
+import "sort"
+
 // Accion es algo que un jugador pide hacer. Aplicar recibe al autor porque
 // la identidad la asigna la sesión en el servidor, no el contenido de la
 // acción.
@@ -30,9 +32,44 @@ func NuevoEstado(m *Mapa) *Estado {
 	}
 }
 
-// AgregarJugador crea un jugador con el siguiente ID libre y lo devuelve.
+// VidaInicial es la vida con la que entra un jugador a la partida.
+const VidaInicial = 100
+
+// hayJugadorVivoEn indica si algún jugador vivo está parado en p.
+func (e *Estado) hayJugadorVivoEn(p Posicion) bool {
+	for _, j := range e.Jugadores {
+		if j.Pos == p && j.EstaVivo() {
+			return true
+		}
+	}
+	return false
+}
+
+// AgregarJugador crea un jugador con el siguiente ID libre (desde 1) y lo
+// coloca en una casilla transitable y sin jugador vivo. Lo devuelve, o nil si
+// no hay ninguna casilla libre; en ese caso no consume ningún ID.
+//
+// La casilla es la primera que se encuentra recorriendo el mapa por filas, de
+// arriba abajo y de izquierda a derecha, así el resultado es determinista.
+//
+// TODO: tomar la primera casilla libre es provisional; después se repartirá
+// a los jugadores con azar controlado por semilla.
 func (e *Estado) AgregarJugador(nombre string) *Jugador {
-	// TODO: asignar ID, posición inicial y vida.
+	if e.Mapa == nil {
+		return nil
+	}
+	for y := 0; y < e.Mapa.Alto; y++ {
+		for x := 0; x < e.Mapa.Ancho; x++ {
+			p := Posicion{X: x, Y: y}
+			if !e.Mapa.EsTransitable(p) || e.hayJugadorVivoEn(p) {
+				continue
+			}
+			e.siguienteID++
+			j := &Jugador{ID: e.siguienteID, Nombre: nombre, Pos: p, Vida: VidaInicial}
+			e.Jugadores[j.ID] = j
+			return j
+		}
+	}
 	return nil
 }
 
@@ -80,5 +117,8 @@ func (e *Estado) VistaPara(id IDJugador) Vista {
 			ID: j.ID, Nombre: j.Nombre, Pos: j.Pos, Vida: j.Vida,
 		})
 	}
+	// El recorrido de un map es aleatorio: se ordena por ID para que la vista
+	// sea determinista.
+	sort.Slice(v.Jugadores, func(a, b int) bool { return v.Jugadores[a].ID < v.Jugadores[b].ID })
 	return v
 }
