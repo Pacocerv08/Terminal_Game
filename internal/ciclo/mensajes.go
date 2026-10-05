@@ -2,27 +2,45 @@ package ciclo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Pacocerv08/Terminal_Game/internal/juego"
 	"github.com/Pacocerv08/Terminal_Game/internal/partida"
 )
 
-// TipoMensaje distingue los mensajes que una sesión envía al ciclo.
-type TipoMensaje int
-
-const (
-	MensajeUnirse TipoMensaje = iota
-	MensajeAccion
-	MensajeSalir
+// Errores con los que el ciclo rechaza un Unirse.
+var (
+	ErrNoSePuedeUnir = errors.New("la partida no admite jugadores nuevos")
+	ErrSinLugar      = errors.New("no hay una casilla libre en el mapa")
 )
 
-// Mensaje es lo único que una sesión envía al ciclo.
+// tipoMensaje distingue los mensajes que una sesión envía al ciclo. El valor
+// cero no es ningún mensaje.
+type tipoMensaje int
+
+const (
+	mensajeNulo tipoMensaje = iota
+	mensajeUnirse
+	mensajeAccion
+	mensajeSalir
+)
+
+// Mensaje es lo único que una sesión envía al ciclo. Sus campos son privados:
+// solo Unirse, Actuar y Salir construyen mensajes válidos. El valor cero de
+// Mensaje no significa nada y el ciclo lo ignora.
 type Mensaje struct {
-	Tipo      TipoMensaje
-	Jugador   juego.IDJugador        // lo pone la sesión, nunca viene de las teclas
-	Accion    juego.Accion           // solo en MensajeAccion
-	Nombre    string                 // solo en MensajeUnirse
-	Respuesta chan<- RespuestaUnirse // solo en MensajeUnirse (con buffer de 1)
+	tipo    tipoMensaje
+	jugador juego.IDJugador // lo pone la sesión, nunca viene de las teclas
+	accion  juego.Accion    // solo en mensajeAccion
+	nombre  string          // solo en mensajeUnirse
+
+	// Solo en mensajeUnirse. respuesta no tiene buffer: el ciclo la entrega
+	// con un select contra cancelado, y quien envía el mensaje siempre está
+	// esperando en un select entre respuesta y su contexto. Si cancelado se
+	// cierra antes de que la respuesta se entregue, el ciclo retira al
+	// jugador que acaba de agregar.
+	respuesta chan<- RespuestaUnirse
+	cancelado <-chan struct{}
 }
 
 // Cuadro es lo que el ciclo entrega a cada sesión después de un tick.
@@ -38,22 +56,23 @@ type Suscripcion struct {
 	Cuadros <-chan Cuadro
 }
 
-// RespuestaUnirse es la respuesta del ciclo a un MensajeUnirse. Err no es nil
-// si no se pudo unir, por ejemplo porque la partida ya empezó.
+// RespuestaUnirse es la respuesta del ciclo a un Unirse. Err no es nil si no
+// se pudo unir: ErrNoSePuedeUnir o ErrSinLugar.
 type RespuestaUnirse struct {
 	Suscripcion Suscripcion
 	Err         error
 }
 
 // Unirse pide al ciclo agregar un jugador y espera su respuesta. No se queda
-// bloqueada si ctx se cancela.
+// bloqueada si ctx se cancela. Si ctx se cancela después de que el ciclo
+// recibió el mensaje, el ciclo retira al jugador que había agregado.
 //
-// TODO: si ctx se cancela después de enviar el mensaje, el ciclo puede crear
-// un jugador que nadie va a retirar. El ciclo debe retirar a los jugadores
-// cuya respuesta no se pudo entregar.
+// ctx debe cancelarse cuando el ciclo termine, por ejemplo derivándolo del
+// contexto del servidor: si no, un Unirse que quedó en la cola de un ciclo
+// ya terminado esperaría para siempre.
 func Unirse(ctx context.Context, entrada chan<- Mensaje, nombre string) (Suscripcion, error) {
-	respuesta := make(chan RespuestaUnirse, 1)
-	m := Mensaje{Tipo: MensajeUnirse, Nombre: nombre, Respuesta: respuesta}
+	respuesta := make(chan RespuestaUnirse)
+	m := Mensaje{tipo: mensajeUnirse, nombre: nombre, respuesta: respuesta, cancelado: ctx.Done()}
 	if err := enviar(ctx, entrada, m); err != nil {
 		return Suscripcion{}, err
 	}
@@ -65,15 +84,28 @@ func Unirse(ctx context.Context, entrada chan<- Mensaje, nombre string) (Suscrip
 	}
 }
 
-// Actuar pide al ciclo aplicar la acción a en nombre del jugador id.
+// Actuar pide al ciclo aplicar la acción a en nombre del jugador id. El ciclo
+// aplica como máximo una acción por jugador por tick y conserva la última.
 func Actuar(ctx context.Context, entrada chan<- Mensaje, id juego.IDJugador, a juego.Accion) error {
-	return enviar(ctx, entrada, Mensaje{Tipo: MensajeAccion, Jugador: id, Accion: a})
+	return enviar(ctx, entrada, Mensaje{tipo: mensajeAccion, jugador: id, accion: a})
 }
 
-// Salir avisa al ciclo que el jugador id se fue. Devuelve el error de ctx si
-// el ciclo ya terminó y nadie lee el canal, para no quedarse bloqueada.
+// Salir avisa al ciclo que el jugador id se fue.
+//
+// Intenta el envío primero y solo después atiende ctx.Done(): si la cola
+// tiene espacio, el aviso se entrega aunque ctx ya esté cancelado. Por eso ctx
+// debe ser el del servidor y no el de la sesión: la sesión suele terminar
+// justamente porque su contexto se canceló, y aun así debe poder retirar a su
+// jugador. Devuelve el error de ctx solo si la cola está llena y ctx se
+// cancela, para no quedarse bloqueada con un ciclo que ya terminó.
 func Salir(ctx context.Context, entrada chan<- Mensaje, id juego.IDJugador) error {
-	return enviar(ctx, entrada, Mensaje{Tipo: MensajeSalir, Jugador: id})
+	m := Mensaje{tipo: mensajeSalir, jugador: id}
+	select {
+	case entrada <- m:
+		return nil
+	default:
+	}
+	return enviar(ctx, entrada, m)
 }
 
 // enviar entrega m al ciclo o falla si ctx se cancela antes.

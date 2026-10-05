@@ -73,14 +73,17 @@ func (e *Estado) AgregarJugador(nombre string) *Jugador {
 	return nil
 }
 
-// QuitarJugador saca al jugador id de la partida.
+// QuitarJugador saca al jugador id de la partida. Si no existe, no hace nada.
+// Su casilla queda libre y su ID no se vuelve a asignar.
 func (e *Estado) QuitarJugador(id IDJugador) {
-	// TODO: implementar.
+	delete(e.Jugadores, id)
 }
 
-// Avanzar mueve el estado un tick: cierre de zona, daño de zona, etc.
+// Avanzar mueve el estado un tick: cuenta el tick y, más adelante, cierra la
+// zona y aplica su daño.
 func (e *Estado) Avanzar() {
-	// TODO: implementar.
+	e.Tick++
+	// TODO: cierre de zona y daño de zona.
 }
 
 // Vista es una copia de solo lectura del estado, desde el punto de vista de

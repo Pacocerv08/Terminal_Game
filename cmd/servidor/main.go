@@ -42,6 +42,9 @@ func main() {
 	mensajes := make(chan ciclo.Mensaje, capacidadMensajes)
 
 	bucle := ciclo.Nuevo(intervaloTick, estado, maquina, mensajes)
+	// TODO: la semilla debe ser aleatoria al arrancar el servidor. Mientras no
+	// se llame a FijarSemilla vale 0, así que el orden de desempate de cada
+	// partida es siempre el mismo y los jugadores podrían predecirlo.
 	servidor := red.NuevoServidor(cfg, mensajes, plano.NuevoPlano(), entrada.TraductorTeclado{})
 
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
