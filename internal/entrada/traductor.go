@@ -13,8 +13,21 @@ type Traductor interface {
 // una tecla para disparar y otra para recoger.
 type TraductorTeclado struct{}
 
-// Traducir implementa Traductor.
+// Traducir implementa Traductor. Mover: w/a/s/d, también en mayúscula por si
+// el jugador tiene activado el bloqueo de mayúsculas, y las flechas "up",
+// "down", "left" y "right". Cualquier otra tecla devuelve false.
+//
+// TODO: disparar y recoger.
 func (TraductorTeclado) Traducir(tecla string) (juego.Accion, bool) {
-	// TODO: mapear teclas a acciones.
+	switch tecla {
+	case "w", "W", "up":
+		return juego.MoverAccion{Dir: juego.Arriba}, true
+	case "s", "S", "down":
+		return juego.MoverAccion{Dir: juego.Abajo}, true
+	case "a", "A", "left":
+		return juego.MoverAccion{Dir: juego.Izquierda}, true
+	case "d", "D", "right":
+		return juego.MoverAccion{Dir: juego.Derecha}, true
+	}
 	return nil, false
 }
